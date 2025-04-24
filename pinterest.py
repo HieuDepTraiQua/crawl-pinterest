@@ -8,6 +8,7 @@ import codecs
 from datetime import datetime
 import os
 import sys
+import json
 
 def get_real_avatar_url(avatar_url):
     if not avatar_url:
@@ -37,53 +38,58 @@ def get_real_avatar_url(avatar_url):
         print(f"⚠️ Lỗi kiểm tra avatar: {e}")
         return None
 
-
-async def fetch_user_data(context, username):
+async def fetch_user_data(context, username):    
     page = await context.new_page()
+    
     await page.goto(f"https://www.pinterest.com/{username}/", wait_until="domcontentloaded", timeout=60000)
-    # await page.goto(f"https://www.pinterest.com/{username}/", wait_until="networkidle")
-    await page.wait_for_selector('[data-test-id="profile-header"]', timeout=10000)
+    await page.wait_for_function('document.querySelector("script#__PWS_INITIAL_PROPS__") !== null', timeout=10000)
+
+    # Lấy nội dung JSON nhúng trong thẻ script
+    data_script = await page.query_selector("script#__PWS_INITIAL_PROPS__")
+    raw_json = await data_script.inner_text()
+
+    # Parse JSON
+    data = json.loads(raw_json)
+    # Save the JSON data to a file
+    with open("__PWS_INITIAL_PROPS__.json", "w", encoding="utf-8") as json_file:
+        json.dump(data, json_file, ensure_ascii=False, indent=4)
 
      # 👉 Mô phỏng thao tác người dùng
     scroll_distance = random.randint(200, 800)
     sleep_time = random.uniform(2, 5)
     await page.mouse.wheel(0, scroll_distance)
     await asyncio.sleep(sleep_time)
-    
-    async def safe_text(el):
-        return await el.inner_text() if el else ""
+    try:
+        data = json.loads(raw_json)
 
-    async def safe_attr(el, attr):
-        return await el.get_attribute(attr) if el else ""
+        # Trích xuất thông tin người dùng
+        user_resource_key = f"[[\"field_set_key\",\"unauth_profile\"],[\"is_mobile_fork\",true],[\"username\",\"{username}\"]]"
+        user_data = data.get('initialReduxState', {}).get('resources', {}).get('UserResource', {}).get(user_resource_key, {}).get('data', {})
+        
+        avatar_url = user_data.get("image_xlarge_url", "")
+        username_real = user_data.get("username", "")
+        
+        final_avatar_url = get_real_avatar_url(avatar_url)
+        if final_avatar_url:
+            download_avatar(final_avatar_url, username_real or username)
+        # Lấy các thông tin cần thiết
+        user_info = {
+            "id": user_data.get("id", ""),
+            "username": username_real,
+            "avatar_url": final_avatar_url,
+            "bio": user_data.get("about", ""),
+            "full_name": user_data.get("full_name", ""),
+            "following": user_data.get("following_count", ""),
+            "follower": user_data.get("follower_count", ""),
+            "link": f"https://www.pinterest.com/{username}/",
+        }
+        await page.close()
+        return user_info
+    except Exception as e:
+        print(f"❌ Lỗi khi lấy __PWS_INITIAL_PROPS__: {e}")
+        return None
 
-    avatar_el = await page.query_selector('[data-test-id="gestalt-avatar-svg"] img')
-    name_el = await page.query_selector('[data-test-id="profile-name"] div')
-    username_el = await page.query_selector('span.JlN.zDA')
-    bio_el = await page.query_selector('[data-test-id="profileAboutText"] span')
-    if not bio_el:
-        bio_el = await page.query_selector('[aria-label="Expand about section"] span')
-
-    avatar_url = await safe_attr(avatar_el, "src")
-    full_name = await safe_text(name_el)
-    username_real = await safe_text(username_el)
-    bio = await safe_text(bio_el)
-    
-    await page.close()
-    
-    final_avatar_url = get_real_avatar_url(avatar_url)
-    if final_avatar_url:
-        download_avatar(final_avatar_url, username_real or username)
-
-    return {
-        "username": username_real or username,
-        "full_name": full_name,
-        "bio": bio,
-        "avatar_url": final_avatar_url,
-        "link": f"https://www.pinterest.com/{username}/"   
-    }
-
-
-async def scrape_usernames(page, keyword: str, scroll_times: int = 30):
+async def scrape_usernames(page, keyword: str, scroll_times: int = 0):
     usernames = set()
     search_url = f"https://www.pinterest.com/search/users/?q={keyword.replace(' ', '%20')}"
     await page.goto(search_url)
@@ -135,9 +141,10 @@ async def run_pipeline(keyword: str):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         output_file = f"profiles_{keyword.replace(' ', '_')}_{timestamp}.csv"
         with codecs.open(output_file, "w", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=["username", "full_name", "bio", "avatar_url", "link"])
+            writer = csv.DictWriter(f, fieldnames=["id", "username", "full_name", "bio", "avatar_url", "following", "follower",  "link"])
             writer.writeheader()
             for row in profile_data:
+                row['id'] = str(row['id'])
                 writer.writerow(row)
 
         print(f"\n✅ Hoàn tất. Đã lưu {len(profile_data)} hồ sơ vào: {output_file}")
