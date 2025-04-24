@@ -9,6 +9,7 @@ from datetime import datetime
 import os
 import sys
 import json
+from database import *
 
 def get_real_avatar_url(avatar_url):
     if not avatar_url:
@@ -56,7 +57,7 @@ async def fetch_user_data(context, username):
 
      # 👉 Mô phỏng thao tác người dùng
     scroll_distance = random.randint(200, 800)
-    sleep_time = random.uniform(2, 5)
+    sleep_time = random.uniform(1, 3)
     await page.mouse.wheel(0, scroll_distance)
     await asyncio.sleep(sleep_time)
     try:
@@ -74,7 +75,7 @@ async def fetch_user_data(context, username):
             download_avatar(final_avatar_url, username_real or username)
         # Lấy các thông tin cần thiết
         user_info = {
-            "id": user_data.get("id", ""),
+            "id_profile": user_data.get("id", ""),
             "username": username_real,
             "avatar_url": final_avatar_url,
             "bio": user_data.get("about", ""),
@@ -89,7 +90,7 @@ async def fetch_user_data(context, username):
         print(f"❌ Lỗi khi lấy __PWS_INITIAL_PROPS__: {e}")
         return None
 
-async def scrape_usernames(page, keyword: str, scroll_times: int = 0):
+async def scrape_usernames(page, keyword: str, scroll_times: int = 75):
     usernames = set()
     search_url = f"https://www.pinterest.com/search/users/?q={keyword.replace(' ', '%20')}"
     await page.goto(search_url)
@@ -138,16 +139,19 @@ async def run_pipeline(keyword: str):
 
         await browser.close()
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        output_file = f"profiles_{keyword.replace(' ', '_')}_{timestamp}.csv"
-        with codecs.open(output_file, "w", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=["id", "username", "full_name", "bio", "avatar_url", "following", "follower",  "link"])
-            writer.writeheader()
-            for row in profile_data:
-                row['id'] = str(row['id'])
-                writer.writerow(row)
+        # timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        # output_file = f"profiles_{keyword.replace(' ', '_')}_{timestamp}.csv"
+        # with codecs.open(output_file, "w", encoding="utf-8-sig") as f:
+        #     writer = csv.DictWriter(f, fieldnames=["id_profile", "username", "full_name", "bio", "avatar_url", "following", "follower",  "link"])
+        #     writer.writeheader()
+        #     for row in profile_data:
+        #         writer.writerow(row)
 
-        print(f"\n✅ Hoàn tất. Đã lưu {len(profile_data)} hồ sơ vào: {output_file}")
+        # print(f"\n✅ Hoàn tất. Đã lưu {len(profile_data)} hồ sơ vào: {output_file}")
+        
+        # Lưu vào DB
+        profile.insert_many(profile_data)
+        print(f"✅ Đã lưu {len(profile_data)} hồ sơ vào MongoDB: {config.DATABASE_NAME}")
 
 def download_avatar(image_url, username):
     try:
