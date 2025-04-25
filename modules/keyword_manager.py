@@ -1,3 +1,4 @@
+from config import *
 import string
 from database import *
 from models.keyword_entity import KeywordEntity
@@ -22,7 +23,3 @@ def create_keywords():
         print(
             f"✅ Đã lưu {len(keyword_entities)} keywords vào MongoDB: {config.DATABASE_NAME}"
         )
-
-
-if __name__ == "__main__":
-    create_keywords()

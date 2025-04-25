@@ -3,7 +3,6 @@ import threading
 from queue import Queue
 from database import *
 from modules.pinterest import crawl_usernames
-from modules.keyword_manager import create_keywords
 from models.keyword_entity import KeywordEntity
 from datetime import datetime
 
@@ -54,9 +53,14 @@ async def worker(queue: KeywordQueue, worker_id: int):
         print(f"📝 Worker {worker_id} đang crawl keyword: {keyword}")
         await crawl_usernames(keyword)
 
-async def main_crawl_username():
+async def main():
     # Tạo queue và load keywords
     queue = KeywordQueue()
+    
+    # Kiểm tra nếu không có keywords nào cần crawl
+    if queue.queue.empty():
+        print("❌ Không có keywords nào cần crawl, dừng chương trình")
+        return
     
     # Tạo và chạy 2 worker
     workers = [
@@ -67,5 +71,4 @@ async def main_crawl_username():
     await asyncio.gather(*workers)
 
 if __name__ == "__main__":
-    asyncio.run(main_crawl_username()) 
-    # create_keywords()
+    asyncio.run(main()) 

@@ -151,9 +151,9 @@ async def crawl_usernames(keyword: str):
         await asyncio.sleep(3)
 
         # Với giới hạn là 20 lần call API và random scroll thì value mặc định là 75
-        scroll_times: int = 0
+        scroll_times: int = 75
         for i in range(scroll_times):
-            print(f"🔄 Cuộn {i+1}/{scroll_times}...")
+            print(f"🔄 Cuộn {i+1}/{scroll_times} keyword {keyword}...")
             await page.mouse.wheel(0, random.randint(800, 1200))
             await asyncio.sleep(random.uniform(1.5, 2.5))
 
@@ -172,7 +172,7 @@ async def crawl_usernames(keyword: str):
         if username_entities:
             usernames_collection.insert_many([entity.to_dict() for entity in username_entities])
             print(
-                f"✅ Đã lưu {len(username_entities)} username vào MongoDB: {config.DATABASE_NAME}"
+                f"✅ Đã lưu {len(username_entities)} username với keyword {keyword} vào MongoDB: {config.DATABASE_NAME}"
             )
     finally:
         await browser.close()
