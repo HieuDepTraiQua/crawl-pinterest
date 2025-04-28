@@ -9,6 +9,7 @@ import json
 from database import *
 from models.username_entity import UsernameEntity
 from models.profile_entity import ProfileEntity
+from datetime import datetime
 
 
 def get_real_avatar_url(avatar_url):
@@ -52,23 +53,13 @@ async def create_browser_context():
     return p, browser, context
 
 
-async def crawl_user_profile():
-    # Kiểm tra số lượng username cần crawl
-    count = usernames_collection.count_documents(
-        {"isCrawl": False, "username": "bhomedeco"}
-    )
-    if count == 0:
-        print("✅ Tất cả các profile đã được crawl !!!")
-        return
-
-    username_crawls = usernames_collection.find(
-        {"isCrawl": False, "username": "bhomedeco"}
-    )
+async def crawl_user_profile(list_usernames):
     list_profile = []
+    avatar_download_queue = []  # Danh sách các ảnh cần tải
 
     p, browser, context = await create_browser_context()
     try:
-        for username in username_crawls:
+        for username in list_usernames:
             page = await context.new_page()
             try:
                 await page.goto(
@@ -108,14 +99,17 @@ async def crawl_user_profile():
 
                 final_avatar_url = get_real_avatar_url(avatar_url)
                 if final_avatar_url:
-                    relative_path = download_avatar(
-                        final_avatar_url, username_real or username.get("username")
-                    )
+                    # Thêm vào hàng đợi tải ảnh
+                    avatar_download_queue.append({
+                        "url": final_avatar_url,
+                        "username": username_real or username.get("username")
+                    })
+
                 # Lấy các thông tin cần thiết
                 user_info = ProfileEntity(
                     id_profile=user_data.get("id", ""),
                     username=username_real,
-                    avatar_url=relative_path,
+                    avatar_url=final_avatar_url,  # Tạm thời lưu URL gốc
                     bio=user_data.get("about", ""),
                     full_name=user_data.get("full_name", ""),
                     following=user_data.get("following_count", ""),
@@ -132,6 +126,20 @@ async def crawl_user_profile():
 
         # Lưu danh sách profile vào database
         if list_profile:
+                    # Tải ảnh sau khi đã crawl xong tất cả
+            print("\n🔄 Bắt đầu tải ảnh avatar...")
+            for item in avatar_download_queue:
+                try:
+                    relative_path = download_avatar(item["url"], item["username"])
+                    if relative_path:
+                        # Cập nhật avatar_url trong list_profile
+                        for profile in list_profile:
+                            if profile.username == item["username"]:
+                                profile.avatar_url = relative_path
+                                break
+                except Exception as e:
+                    print(f"❌ Lỗi khi tải ảnh cho {item['username']}: {e}")
+            
             profile_collection.insert_many(
                 [entity.to_dict() for entity in list_profile]
             )
@@ -196,6 +204,13 @@ async def crawl_usernames(keyword: str):
                 print(
                     f"ℹ️ Có {len(usernames_data) - len(new_usernames)} username đã tồn tại trong database"
                 )
+            
+            # Cập nhật trạng thái keyword sau khi lưu xong username
+            keywords_collection.update_one(
+                {"keyword": keyword},
+                {"$set": {"isCrawl": True, "crawlDate": datetime.now()}}
+            )
+            print(f"✅ Đã cập nhật trạng thái crawl cho keyword: {keyword}")
     finally:
         await browser.close()
         await p.stop()
@@ -203,9 +218,11 @@ async def crawl_usernames(keyword: str):
 
 def download_avatar(image_url, username):
     try:
-        if not os.path.exists("avatars"):
-            os.makedirs("avatars")
-        filename = os.path.join("avatars", f"{username}.jpg")
+        current_date = datetime.now().strftime("%d-%m-%Y")
+        folder_path = os.path.join("avatars", current_date)
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+        filename = os.path.join(folder_path, f"{username}.jpg")
         response = requests.get(image_url, timeout=10)
         if response.status_code == 200:
             with open(filename, "wb") as f:
