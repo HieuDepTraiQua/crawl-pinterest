@@ -54,14 +54,18 @@ async def create_browser_context():
 
 async def crawl_user_profile():
     # Kiểm tra số lượng username cần crawl
-    count = usernames_collection.count_documents({"isCrawl": False})
+    count = usernames_collection.count_documents(
+        {"isCrawl": False, "username": "bhomedeco"}
+    )
     if count == 0:
         print("✅ Tất cả các profile đã được crawl !!!")
         return
 
-    username_crawls = usernames_collection.find({"isCrawl": False})
+    username_crawls = usernames_collection.find(
+        {"isCrawl": False, "username": "bhomedeco"}
+    )
     list_profile = []
-    
+
     p, browser, context = await create_browser_context()
     try:
         for username in username_crawls:
@@ -83,7 +87,7 @@ async def crawl_user_profile():
 
                 # Parse JSON
                 data = json.loads(raw_json)
-                
+
                 scroll_distance = random.randint(200, 800)
                 sleep_time = random.uniform(1, 3)
                 await page.mouse.wheel(0, scroll_distance)
@@ -104,14 +108,14 @@ async def crawl_user_profile():
 
                 final_avatar_url = get_real_avatar_url(avatar_url)
                 if final_avatar_url:
-                    download_avatar(
+                    relative_path = download_avatar(
                         final_avatar_url, username_real or username.get("username")
                     )
                 # Lấy các thông tin cần thiết
                 user_info = ProfileEntity(
                     id_profile=user_data.get("id", ""),
                     username=username_real,
-                    avatar_url=final_avatar_url,
+                    avatar_url=relative_path,
                     bio=user_data.get("about", ""),
                     full_name=user_data.get("full_name", ""),
                     following=user_data.get("following_count", ""),
@@ -128,9 +132,17 @@ async def crawl_user_profile():
 
         # Lưu danh sách profile vào database
         if list_profile:
-            profile_collection.insert_many([entity.to_dict() for entity in list_profile])
+            profile_collection.insert_many(
+                [entity.to_dict() for entity in list_profile]
+            )
             print(
                 f"✅ Đã lưu {len(list_profile)} profile vào MongoDB: {config.DATABASE_NAME}"
+            )
+
+            # Cập nhật trạng thái isCrawl cho các username đã crawl
+            usernames_to_update = [profile.username for profile in list_profile]
+            usernames_collection.update_many(
+                {"username": {"$in": usernames_to_update}}, {"$set": {"isCrawl": True}}
             )
     finally:
         await browser.close()
@@ -138,8 +150,8 @@ async def crawl_user_profile():
 
 
 async def crawl_usernames(keyword: str):
-    p, browser, context = await create_browser_context()  
-    
+    p, browser, context = await create_browser_context()
+
     try:
         page = await context.new_page()
         print(f"\n🔍 Tìm người dùng theo từ khóa: {keyword}")
@@ -164,16 +176,26 @@ async def crawl_usernames(keyword: str):
                 username = href.strip("/")
                 usernames_data.add(username)
 
+        # Kiểm tra username đã tồn tại trong database
+        existing_usernames = set(usernames_collection.distinct("username"))
+        new_usernames = usernames_data - existing_usernames
+
         # Convert to UsernameEntity and save to database
         username_entities = [
             UsernameEntity(username=username, isCrawl=False)
-            for username in usernames_data
+            for username in new_usernames
         ]
         if username_entities:
-            usernames_collection.insert_many([entity.to_dict() for entity in username_entities])
-            print(
-                f"✅ Đã lưu {len(username_entities)} username với keyword {keyword} vào MongoDB: {config.DATABASE_NAME}"
+            usernames_collection.insert_many(
+                [entity.to_dict() for entity in username_entities]
             )
+            print(
+                f"✅ Đã lưu {len(username_entities)} username mới với keyword {keyword} vào MongoDB: {config.DATABASE_NAME}"
+            )
+            if len(usernames_data) > len(new_usernames):
+                print(
+                    f"ℹ️ Có {len(usernames_data) - len(new_usernames)} username đã tồn tại trong database"
+                )
     finally:
         await browser.close()
         await p.stop()
@@ -189,30 +211,31 @@ def download_avatar(image_url, username):
             with open(filename, "wb") as f:
                 f.write(response.content)
             print(f"🖼️ Ảnh avatar đã lưu: {filename}")
+            return filename
     except Exception as e:
         print(f"❌ Lỗi tải avatar cho {username}: {e}")
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("⚠️ Vui lòng nhập lệnh và tham số. VD:")
-        print('   python pinterest.py crawl_usernames "Keyword search"')
-        print('   python pinterest.py crawl_user_profile')
-        sys.exit(1)
+# if __name__ == "__main__":
+#     if len(sys.argv) < 2:
+#         print("⚠️ Vui lòng nhập lệnh và tham số. VD:")
+#         print('   python pinterest.py crawl_usernames "Keyword search"')
+#         print("   python pinterest.py crawl_user_profile")
+#         sys.exit(1)
 
-    command = sys.argv[1]
-    
-    if command == "crawl_usernames":
-        if len(sys.argv) < 3:
-            print("⚠️ Vui lòng nhập từ khóa tìm kiếm. VD:")
-            print('   python pinterest_scraper.py crawl_usernames "Keyword search"')
-            sys.exit(1)
-        keyword = " ".join(sys.argv[2:])
-        asyncio.run(crawl_usernames(keyword))
-    elif command == "crawl_user_profile":
-        asyncio.run(crawl_user_profile())
-    else:
-        print("⚠️ Lệnh không hợp lệ. Các lệnh có sẵn:")
-        print("   - crawl_usernames: Tìm kiếm và lưu username")
-        print("   - crawl_user_profile: Crawl thông tin profile từ username đã lưu")
-        sys.exit(1)
+#     command = sys.argv[1]
+
+#     if command == "crawl_usernames":
+#         if len(sys.argv) < 3:
+#             print("⚠️ Vui lòng nhập từ khóa tìm kiếm. VD:")
+#             print('   python pinterest_scraper.py crawl_usernames "Keyword search"')
+#             sys.exit(1)
+#         keyword = " ".join(sys.argv[2:])
+#         asyncio.run(crawl_usernames(keyword))
+#     elif command == "crawl_user_profile":
+#         asyncio.run(crawl_user_profile())
+#     else:
+#         print("⚠️ Lệnh không hợp lệ. Các lệnh có sẵn:")
+#         print("   - crawl_usernames: Tìm kiếm và lưu username")
+#         print("   - crawl_user_profile: Crawl thông tin profile từ username đã lưu")
+#         sys.exit(1)

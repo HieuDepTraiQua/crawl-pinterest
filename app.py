@@ -3,6 +3,7 @@ import threading
 from queue import Queue
 from database import *
 from modules.pinterest import crawl_usernames
+from modules.pinterest import crawl_user_profile
 from modules.keyword_manager import create_keywords
 from models.keyword_entity import KeywordEntity
 from datetime import datetime
@@ -67,5 +68,6 @@ async def main_crawl_username():
     await asyncio.gather(*workers)
 
 if __name__ == "__main__":
-    asyncio.run(main_crawl_username()) 
+    # asyncio.run(main_crawl_username()) 
+    asyncio.run(crawl_user_profile()) 
     # create_keywords()
