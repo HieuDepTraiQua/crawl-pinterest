@@ -23,3 +23,8 @@ def create_keywords():
         print(
             f"✅ Đã lưu {len(keyword_entities)} keywords vào MongoDB: {config.DATABASE_NAME}"
         )
+
+
+def count_keyword_not_crawl():
+    count = keywords_collection.count_documents({"isCrawl": False})
+    print("Số lượng keyword chưa crawl: ", count)

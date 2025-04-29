@@ -8,6 +8,7 @@ import sys
 import json
 from database import *
 from models.username_entity import UsernameEntity
+from models.keyword_entity import KeywordEntity
 from models.profile_entity import ProfileEntity
 from datetime import datetime
 
@@ -100,10 +101,12 @@ async def crawl_user_profile(list_usernames):
                 final_avatar_url = get_real_avatar_url(avatar_url)
                 if final_avatar_url:
                     # Thêm vào hàng đợi tải ảnh
-                    avatar_download_queue.append({
-                        "url": final_avatar_url,
-                        "username": username_real or username.get("username")
-                    })
+                    avatar_download_queue.append(
+                        {
+                            "url": final_avatar_url,
+                            "username": username_real or username.get("username"),
+                        }
+                    )
 
                 # Lấy các thông tin cần thiết
                 user_info = ProfileEntity(
@@ -126,7 +129,7 @@ async def crawl_user_profile(list_usernames):
 
         # Lưu danh sách profile vào database
         if list_profile:
-                    # Tải ảnh sau khi đã crawl xong tất cả
+            # Tải ảnh sau khi đã crawl xong tất cả
             print("\n🔄 Bắt đầu tải ảnh avatar...")
             for item in avatar_download_queue:
                 try:
@@ -139,7 +142,7 @@ async def crawl_user_profile(list_usernames):
                                 break
                 except Exception as e:
                     print(f"❌ Lỗi khi tải ảnh cho {item['username']}: {e}")
-            
+
             profile_collection.insert_many(
                 [entity.to_dict() for entity in list_profile]
             )
@@ -152,6 +155,43 @@ async def crawl_user_profile(list_usernames):
             usernames_collection.update_many(
                 {"username": {"$in": usernames_to_update}}, {"$set": {"isCrawl": True}}
             )
+            print(
+                f"✅ Đã cập nhật trạng thái crawl cho {len(usernames_to_update)} username"
+            )
+
+            # Tách fullname và kiểm tra các từ trong collection usernames
+            new_keywords = set()
+            for profile in list_profile:
+                if profile.full_name:
+                    # Tách fullname thành các từ riêng lẻ
+                    name_parts = profile.full_name.split()
+
+                    for name_part in name_parts:
+                        # Kiểm tra xem từ này đã tồn tại trong collection usernames chưa
+                        existing_keyword = keywords_collection.find_one(
+                            {"keyword": name_part.lower()}
+                        )
+                        if not existing_keyword:
+                            new_keywords.add(name_part.lower())
+            
+            # Chuyển set thành list các KeywordEntity
+            keyword_entities = [
+                KeywordEntity(
+                    keyword=keyword,
+                    isCrawl=False,
+                    crawlDate=None,
+                )
+                for keyword in new_keywords
+            ]
+            
+            # Lưu các username mới vào database
+            if keyword_entities:
+                keywords_collection.insert_many(
+                    [entity.to_dict() for entity in keyword_entities]
+                )
+                print(
+                    f"✅ Đã lưu thêm {len(keyword_entities)} keyword mới"
+                )
     finally:
         await browser.close()
         await p.stop()
@@ -204,11 +244,11 @@ async def crawl_usernames(keyword: str):
                 print(
                     f"ℹ️ Có {len(usernames_data) - len(new_usernames)} username đã tồn tại trong database"
                 )
-            
+
             # Cập nhật trạng thái keyword sau khi lưu xong username
             keywords_collection.update_one(
                 {"keyword": keyword},
-                {"$set": {"isCrawl": True, "crawlDate": datetime.now()}}
+                {"$set": {"isCrawl": True, "crawlDate": datetime.now()}},
             )
             print(f"✅ Đã cập nhật trạng thái crawl cho keyword: {keyword}")
     finally:
@@ -231,28 +271,3 @@ def download_avatar(image_url, username):
             return filename
     except Exception as e:
         print(f"❌ Lỗi tải avatar cho {username}: {e}")
-
-
-# if __name__ == "__main__":
-#     if len(sys.argv) < 2:
-#         print("⚠️ Vui lòng nhập lệnh và tham số. VD:")
-#         print('   python pinterest.py crawl_usernames "Keyword search"')
-#         print("   python pinterest.py crawl_user_profile")
-#         sys.exit(1)
-
-#     command = sys.argv[1]
-
-#     if command == "crawl_usernames":
-#         if len(sys.argv) < 3:
-#             print("⚠️ Vui lòng nhập từ khóa tìm kiếm. VD:")
-#             print('   python pinterest_scraper.py crawl_usernames "Keyword search"')
-#             sys.exit(1)
-#         keyword = " ".join(sys.argv[2:])
-#         asyncio.run(crawl_usernames(keyword))
-#     elif command == "crawl_user_profile":
-#         asyncio.run(crawl_user_profile())
-#     else:
-#         print("⚠️ Lệnh không hợp lệ. Các lệnh có sẵn:")
-#         print("   - crawl_usernames: Tìm kiếm và lưu username")
-#         print("   - crawl_user_profile: Crawl thông tin profile từ username đã lưu")
-#         sys.exit(1)
