@@ -1,9 +1,15 @@
 /avatars/
 
+/data/
+
+/logs/
+
 *.csv
 
 *.json
 
 .env
+
+*.log
 
 **/__pycache__/

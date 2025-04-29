@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 import os
 import json
-import logging
 from typing import List, Set, Optional, Tuple
 from datetime import datetime
 
@@ -13,17 +12,15 @@ from database import *
 from models.username_entity import UsernameEntity
 from models.keyword_entity import KeywordEntity
 from models.profile_entity import ProfileEntity
+from utils.logger import setup_logger
+from utils.config import Config
 
-# Cấu hình logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
+# Cấu hình logger
+logger = setup_logger(__name__)
 
 class PinterestCrawler:
     """Lớp chính để thực hiện các thao tác crawl dữ liệu từ Pinterest"""
-
+    
     def __init__(self):
         self.browser = None
         self.context = None
@@ -31,9 +28,7 @@ class PinterestCrawler:
 
     async def __aenter__(self):
         """Khởi tạo browser và context khi sử dụng with statement"""
-        self.playwright, self.browser, self.context = (
-            await self._create_browser_context()
-        )
+        self.playwright, self.browser, self.context = await self._create_browser_context()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -49,9 +44,9 @@ class PinterestCrawler:
         p = await async_playwright().start()
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800},
-            locale="en-US",
+            user_agent=Config.CRAWLER_CONFIG["user_agent"],
+            viewport=Config.CRAWLER_CONFIG["viewport"],
+            locale=Config.CRAWLER_CONFIG["locale"],
         )
         return p, browser, context
 
@@ -61,7 +56,7 @@ class PinterestCrawler:
         if not avatar_url:
             return None
         try:
-            response = requests.get(avatar_url, timeout=5)
+            response = requests.get(avatar_url, timeout=Config.CRAWLER_CONFIG["timeout"])
             content_type = response.headers.get("Content-Type", "")
 
             if "svg" in content_type or "image/svg+xml" in content_type:
@@ -73,7 +68,7 @@ class PinterestCrawler:
             if "75x75_RS" in path_parts:
                 image_path = "/".join(path_parts[2:])
                 original_url = f"https://i.pinimg.com/originals/{image_path}"
-                r = requests.get(original_url, timeout=5)
+                r = requests.get(original_url, timeout=Config.CRAWLER_CONFIG["timeout"])
                 return original_url if r.status_code == 200 else avatar_url
             return avatar_url
 
@@ -85,13 +80,9 @@ class PinterestCrawler:
     def _download_avatar(image_url: str, username: str) -> Optional[str]:
         """Tải avatar về local"""
         try:
-            current_date = datetime.now().strftime("%d-%m-%Y")
-            folder_path = os.path.join("avatars", current_date)
-            os.makedirs(folder_path, exist_ok=True)
-
-            filename = os.path.join(folder_path, f"{username}.jpg")
-            response = requests.get(image_url, timeout=10)
-
+            filename = Config.get_avatar_path(username)
+            response = requests.get(image_url, timeout=Config.CRAWLER_CONFIG["timeout"])
+            
             if response.status_code == 200:
                 with open(filename, "wb") as f:
                     f.write(response.content)
@@ -102,15 +93,13 @@ class PinterestCrawler:
             logger.error(f"Lỗi tải avatar cho {username}: {e}")
             return None
 
-    async def _extract_profile_data(
-        self, page, username: str
-    ) -> Optional[ProfileEntity]:
+    async def _extract_profile_data(self, page, username: str) -> Optional[ProfileEntity]:
         """Trích xuất thông tin profile từ trang Pinterest"""
         try:
             await page.goto(
                 f"https://www.pinterest.com/{username}/",
                 wait_until="domcontentloaded",
-                timeout=60000,
+                timeout=Config.CRAWLER_CONFIG["timeout"] * 1000,  # Chuyển đổi sang milliseconds
             )
             await page.wait_for_function(
                 'document.querySelector("script#__PWS_INITIAL_PROPS__") !== null',
@@ -162,31 +151,22 @@ class PinterestCrawler:
             for username in list_usernames:
                 page = await self.context.new_page()
                 try:
-                    profile = await self._extract_profile_data(
-                        page, username.get("username")
-                    )
+                    profile = await self._extract_profile_data(page, username.get('username'))
                     if profile:
                         list_profile.append(profile)
                         if profile.avatar_url:
-                            avatar_download_queue.append(
-                                {
-                                    "url": profile.avatar_url,
-                                    "username": profile.username
-                                    or username.get("username"),
-                                }
-                            )
-                        logger.info(
-                            f"Đã crawl xong profile: {username.get('username')}"
-                        )
+                            avatar_download_queue.append({
+                                "url": profile.avatar_url,
+                                "username": profile.username or username.get('username')
+                            })
+                        logger.info(f"Đã crawl xong profile: {username.get('username')}")
                 finally:
                     await page.close()
 
             if list_profile:
                 await self._process_profiles(list_profile, avatar_download_queue)
 
-    async def _process_profiles(
-        self, list_profile: List[ProfileEntity], avatar_download_queue: List[dict]
-    ) -> None:
+    async def _process_profiles(self, list_profile: List[ProfileEntity], avatar_download_queue: List[dict]) -> None:
         """Xử lý và lưu thông tin profile"""
         # Tải ảnh avatar
         logger.info("Bắt đầu tải ảnh avatar...")
@@ -208,11 +188,10 @@ class PinterestCrawler:
         # Cập nhật trạng thái crawl
         usernames_to_update = [profile.username for profile in list_profile]
         usernames_collection.update_many(
-            {"username": {"$in": usernames_to_update}}, {"$set": {"isCrawl": True}}
+            {"username": {"$in": usernames_to_update}},
+            {"$set": {"isCrawl": True}}
         )
-        logger.info(
-            f"Đã cập nhật trạng thái crawl cho {len(usernames_to_update)} username"
-        )
+        logger.info(f"Đã cập nhật trạng thái crawl cho {len(usernames_to_update)} username")
 
         # Xử lý và lưu keywords mới
         self._process_keywords(list_profile)
@@ -261,16 +240,10 @@ class PinterestCrawler:
                     await page.mouse.wheel(0, random.randint(800, 1200))
                     await asyncio.sleep(random.uniform(1.5, 2.5))
 
-                elements = await page.query_selector_all(
-                    '[data-test-id="user-rep"] a[href]'
-                )
+                elements = await page.query_selector_all('[data-test-id="user-rep"] a[href]')
                 for el in elements:
                     href = await el.get_attribute("href")
-                    if (
-                        href
-                        and href.startswith("/")
-                        and len(href.strip("/").split("/")) == 1
-                    ):
+                    if href and href.startswith("/") and len(href.strip("/").split("/")) == 1:
                         usernames_data.add(href.strip("/"))
 
                 self._save_usernames(usernames_data, keyword)
@@ -290,14 +263,10 @@ class PinterestCrawler:
             usernames_collection.insert_many(
                 [entity.to_dict() for entity in username_entities]
             )
-            logger.info(
-                f"Đã lưu {len(username_entities)} username mới với keyword {keyword}"
-            )
+            logger.info(f"Đã lưu {len(username_entities)} username mới với keyword {keyword}")
 
             if len(usernames_data) > len(new_usernames):
-                logger.info(
-                    f"Có {len(usernames_data) - len(new_usernames)} username đã tồn tại trong database"
-                )
+                logger.info(f"Có {len(usernames_data) - len(new_usernames)} username đã tồn tại trong database")
 
             keywords_collection.update_one(
                 {"keyword": keyword},

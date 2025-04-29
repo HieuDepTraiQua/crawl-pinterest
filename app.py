@@ -2,21 +2,20 @@ import asyncio
 import threading
 from queue import Queue
 from typing import List, Optional
-import logging
 import sys
 
 from database import *
 from modules.pinterest import PinterestCrawler
 from modules.keyword_manager import *
 from models.keyword_entity import KeywordEntity
-from datetime import datetime
+from utils.logger import setup_logger
+from utils.config import Config
 
-# Cấu hình logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# Cấu hình logger
+logger = setup_logger(__name__)
+
+# Tạo các thư mục cần thiết
+Config.create_directories()
 
 class BaseQueue:
     """Lớp cơ sở cho các queue"""
@@ -59,7 +58,7 @@ class KeywordQueue(BaseQueue):
 
 class UsernameQueue(BaseQueue):
     """Queue quản lý các username cần crawl"""
-    def __init__(self, batch_size: int = 5):
+    def __init__(self, batch_size: int = Config.CRAWLER_CONFIG["default_batch_size"]):
         super().__init__()
         self.batch_size = batch_size
         self._load_usernames()
@@ -122,14 +121,15 @@ class ProfileWorker(CrawlerWorker):
 class CrawlerManager:
     """Quản lý việc crawl dữ liệu"""
     @staticmethod
-    async def crawl_usernames(num_workers: int = 1):
+    async def crawl_usernames(num_workers: int = Config.CRAWLER_CONFIG["default_workers"]):
         """Chạy crawl username với số lượng worker cho trước"""
         queue = KeywordQueue()
         workers = [KeywordWorker(i) for i in range(num_workers)]
         await asyncio.gather(*[worker.process(queue) for worker in workers])
 
     @staticmethod
-    async def crawl_profiles(num_workers: int = 1, batch_size: int = 50):
+    async def crawl_profiles(num_workers: int = Config.CRAWLER_CONFIG["default_workers"], 
+                           batch_size: int = Config.CRAWLER_CONFIG["default_batch_size"]):
         """Chạy crawl profile với số lượng worker và batch size cho trước"""
         queue = UsernameQueue(batch_size)
         workers = [ProfileWorker(i) for i in range(num_workers)]
@@ -155,11 +155,11 @@ def main():
 
     try:
         if command == "crawl_usernames":
-            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else Config.CRAWLER_CONFIG["default_workers"]
             asyncio.run(CrawlerManager.crawl_usernames(num_workers))
         elif command == "crawl_profiles":
-            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-            batch_size = int(sys.argv[3]) if len(sys.argv) > 3 else 50
+            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else Config.CRAWLER_CONFIG["default_workers"]
+            batch_size = int(sys.argv[3]) if len(sys.argv) > 3 else Config.CRAWLER_CONFIG["default_batch_size"]
             asyncio.run(CrawlerManager.crawl_profiles(num_workers, batch_size))
         elif command == "create_keywords":
             create_keywords()

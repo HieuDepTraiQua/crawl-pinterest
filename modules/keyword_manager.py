@@ -1,7 +1,10 @@
-from config import *
+from utils.config import Config
 import string
 from database import *
 from models.keyword_entity import KeywordEntity
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 # Hàm tạo default keyword serach
 def create_keywords():
@@ -20,11 +23,9 @@ def create_keywords():
         keywords_collection.insert_many(
             [entity.to_dict() for entity in keyword_entities]
         )
-        print(
-            f"✅ Đã lưu {len(keyword_entities)} keywords vào MongoDB: {config.DATABASE_NAME}"
-        )
+        logger.info(f"✅ Đã lưu {len(keyword_entities)} keywords vào MongoDB: {Config.DATABASE_NAME}")
 
 
 def count_keyword_not_crawl():
     count = keywords_collection.count_documents({"isCrawl": False})
-    print("Số lượng keyword chưa crawl: ", count)
+    logger.info(f"✅ Số lượng keyword chưa crawl: {count}")
