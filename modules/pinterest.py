@@ -46,7 +46,7 @@ class PinterestCrawler:
         context = await browser.new_context(
             user_agent=Config.CRAWLER_CONFIG["user_agent"],
             viewport=Config.CRAWLER_CONFIG["viewport"],
-            locale=Config.CRAWLER_CONFIG["locale"],
+            locale=Config.CRAWLER_CONFIG["locale"]
         )
         return p, browser, context
 
@@ -80,7 +80,32 @@ class PinterestCrawler:
     def _download_avatar(image_url: str, username: str) -> Optional[str]:
         """Tải avatar về local"""
         try:
-            filename = Config.get_avatar_path(username)
+            # Lấy đường dẫn gốc
+            base_path = Config.get_avatar_path(username)
+            base_dir = os.path.dirname(base_path)
+            base_filename = os.path.basename(base_path)
+            
+            # Kiểm tra số lượng file trong thư mục
+            def get_next_folder():
+                folder = base_dir
+                suffix = 1
+                while True:
+                    if not os.path.exists(folder):
+                        os.makedirs(folder)
+                        return folder
+                    
+                    file_count = len([f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+                    if file_count < 5000:
+                        return folder
+                    
+                    # Tạo thư mục mới với suffix
+                    suffix += 1
+                    folder = f"{base_dir}_{suffix}"
+            
+            # Lấy thư mục phù hợp
+            target_dir = get_next_folder()
+            filename = os.path.join(target_dir, base_filename)
+            
             response = requests.get(image_url, timeout=Config.CRAWLER_CONFIG["timeout"])
             
             if response.status_code == 200:
@@ -111,10 +136,10 @@ class PinterestCrawler:
             data = json.loads(raw_json)
 
             # Mô phỏng hành vi người dùng
-            scroll_distance = random.randint(200, 800)
-            sleep_time = random.uniform(1, 3)
-            await page.mouse.wheel(0, scroll_distance)
-            await asyncio.sleep(sleep_time)
+            # scroll_distance = random.randint(200, 800)
+            # sleep_time = random.uniform(1, 3)
+            # await page.mouse.wheel(0, scroll_distance)
+            # await asyncio.sleep(sleep_time)
 
             user_resource_key = f'[["field_set_key","unauth_profile"],["is_mobile_fork",true],["username","{username}"]]'
             user_data = (

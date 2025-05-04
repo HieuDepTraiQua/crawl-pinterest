@@ -3,6 +3,12 @@ Code lởm, không có gì để xem cả
 
 Để mà clone về dùng được thì nhớ tạo .env (Thông tin DB)
 
+```bash
+DATABASE_NAME = "DB này"
+
+MONGO_URL = "URL này"
+```
+
 Để cài đặt các thư viện cần thiết, bạn có thể chạy lệnh:
 ```bash
 pip install -r requirements.txt

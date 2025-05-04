@@ -172,6 +172,32 @@ def main():
         logger.error(f"Lỗi khi thực thi lệnh: {e}")
         sys.exit(1)
 
+# from playwright.async_api import async_playwright
+# proxy = {
+#     'server': 'http://192.168.1.139:37992',  # Địa chỉ proxy của bạn
+#     'username': '8E5jir',  # Nếu có
+#     'password': 'SU2FP'   # Nếu có
+# }
+
+# # 192.168.1.139:37992:8E5jir:SU2FP 
+
+# async def check_proxy():
+#     async with async_playwright() as p:
+#         browser = await p.chromium.launch(proxy=proxy, headless=True)
+#         context = await browser.new_context()
+#         page = await context.new_page()
+
+#         try:
+#             # Truy cập httpbin để kiểm tra IP của bạn
+#             await page.goto('https://httpbin.org/ip')
+#             content = await page.content()
+#             print(content)  # In ra nội dung trang web để xem IP sử dụng proxy
+
+#         except Exception as e:
+#             print(f"Proxy kiểm tra thất bại: {e}")
+#         finally:
+#             await browser.close()
 
 if __name__ == "__main__":
+    # asyncio.run(check_proxy())
     main()
