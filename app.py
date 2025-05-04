@@ -3,6 +3,8 @@ import threading
 from queue import Queue
 from typing import List, Optional
 import sys
+import psutil
+import math
 
 from database import *
 from modules.pinterest import PinterestCrawler
@@ -16,6 +18,34 @@ logger = setup_logger(__name__)
 
 # Tạo các thư mục cần thiết
 Config.create_directories()
+
+def calculate_optimal_workers() -> int:
+    """Tính toán số lượng worker tối ưu dựa trên tài nguyên hệ thống"""
+    try:
+        # Lấy thông tin CPU và Memory
+        cpu_count = psutil.cpu_count(logical=True)
+        memory = psutil.virtual_memory()
+        
+        # Tính toán giới hạn dựa trên 90% tài nguyên
+        cpu_limit = math.floor(cpu_count * 0.9)
+        memory_limit = math.floor(memory.total * 0.9)
+        
+        # Ước tính mỗi worker sử dụng khoảng 250MB memory
+        memory_based_workers = math.floor(memory_limit / (250 * 1024 * 1024))
+        
+        # Lấy giá trị nhỏ hơn giữa CPU và Memory
+        optimal_workers = min(cpu_limit, memory_based_workers)
+        
+        # Đảm bảo ít nhất 1 worker
+        optimal_workers = max(1, optimal_workers)
+        
+        logger.info(f"CPU cores: {cpu_count}, Memory: {memory.total / (1024*1024*1024):.2f}GB")
+        logger.info(f"Optimal workers calculated: {optimal_workers}")
+        
+        return optimal_workers
+    except Exception as e:
+        logger.error(f"Error calculating optimal workers: {e}")
+        return 1  # Fallback to 1 worker if calculation fails
 
 class BaseQueue:
     """Lớp cơ sở cho các queue"""
@@ -155,10 +185,12 @@ def main():
 
     try:
         if command == "crawl_usernames":
-            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else Config.CRAWLER_CONFIG["default_workers"]
+            # Nếu không có tham số num_workers, tính toán tự động
+            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else calculate_optimal_workers()
             asyncio.run(CrawlerManager.crawl_usernames(num_workers))
         elif command == "crawl_profiles":
-            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else Config.CRAWLER_CONFIG["default_workers"]
+            # Nếu không có tham số num_workers, tính toán tự động
+            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else calculate_optimal_workers()
             batch_size = int(sys.argv[3]) if len(sys.argv) > 3 else Config.CRAWLER_CONFIG["default_batch_size"]
             asyncio.run(CrawlerManager.crawl_profiles(num_workers, batch_size))
         elif command == "create_keywords":
