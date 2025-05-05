@@ -1,0 +1,10 @@
+services:
+  pinterest_crawler:
+    build: .
+    volumes:
+      - .:/app  # Mount source code để có thể sửa code mà không cần build lại
+      - ./avatars:/app/avatars  # Mount thư mục avatars
+    environment:
+      - MONGO_URL=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
+      - DATABASE_NAME=pinterest_crawler
+    command: python app.py  # Command mặc định, có thể override khi chạy 

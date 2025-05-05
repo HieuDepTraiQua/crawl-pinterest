@@ -180,9 +180,18 @@ def main():
     if len(sys.argv) < 2:
         print_usage()
         sys.exit(1)
-
-    command = sys.argv[1]
-
+        
+    try:
+        app_index = sys.argv.index("app.py")
+        command = sys.argv[app_index + 1]
+    except (ValueError, IndexError):
+        print("⚠️ Không tìm thấy lệnh hợp lệ sau 'app.py'!")
+        print_usage()
+        sys.exit(1)
+        
+    
+    print(command)
+    
     try:
         if command == "crawl_usernames":
             # Nếu không có tham số num_workers, tính toán tự động
