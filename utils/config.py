@@ -46,7 +46,7 @@ class Config:
             str: Đường dẫn đầy đủ để lưu avatar
         """
         from datetime import datetime
-        current_date = datetime.now().strftime("%d-%m-%Y")
+        current_date = datetime.now().strftime("%Y-%m-%d")
         folder_path = os.path.join(cls.DIRECTORIES["avatars"], current_date)
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
