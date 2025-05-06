@@ -27,7 +27,7 @@ RUN mkdir -p logs avatars
 # Thiết lập biến môi trường
 ENV PYTHONUNBUFFERED=1
 ENV MONGO_URL=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
-ENV DATABASE_NAME=pinterest_crawler
+ENV DATABASE_NAME=pinterest_data
 
 # Command mặc định khi chạy container
 ENTRYPOINT ["python", "app.py"]

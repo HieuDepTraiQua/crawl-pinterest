@@ -12,6 +12,8 @@ from modules.keyword_manager import *
 from models.keyword_entity import KeywordEntity
 from utils.logger import setup_logger
 from utils.config import Config
+import argparse
+
 
 # Cấu hình logger
 logger = setup_logger(__name__)
@@ -166,49 +168,35 @@ class CrawlerManager:
         await asyncio.gather(*[worker.process(queue) for worker in workers])
 
 
-def print_usage():
-    """Hiển thị hướng dẫn sử dụng"""
-    print("⚠️ Vui lòng chọn chế độ crawl:")
-    print("   python app.py crawl_usernames [num_workers]")
-    print("   python app.py crawl_profiles [num_workers] [batch_size]")
-    print("   python app.py create_keywords")
-    print("   python app.py count_keywords")
-
-
 def main():
     """Hàm chính của chương trình"""
-    if len(sys.argv) < 2:
-        print_usage()
-        sys.exit(1)
-        
-    try:
-        app_index = sys.argv.index("app.py")
-        command = sys.argv[app_index + 1]
-    except (ValueError, IndexError):
-        print("⚠️ Không tìm thấy lệnh hợp lệ sau 'app.py'!")
-        print_usage()
-        sys.exit(1)
-        
     
-    print(command)
+    # Khởi tạo parser để xử lý đối số từ dòng lệnh
+    parser = argparse.ArgumentParser(description="Chương trình crawler cho Pinterest")
     
+    # Định nghĩa các lệnh có thể có
+    parser.add_argument('command', help="Lệnh cần thực thi", choices=['crawl_usernames', 'crawl_profiles', 'create_keywords', 'count_keywords'])
+    
+    # Thêm các đối số phụ (nếu cần)
+    parser.add_argument('num_workers', type=int, nargs='?', default=None, help="Số lượng workers")
+    parser.add_argument('batch_size', type=int, nargs='?', default=None, help="Batch size cho crawl_profiles")
+    
+    # Phân tích các đối số
+    args = parser.parse_args()
+    
+    # Xử lý các lệnh tương ứng
     try:
-        if command == "crawl_usernames":
-            # Nếu không có tham số num_workers, tính toán tự động
-            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else calculate_optimal_workers()
+        if args.command == "crawl_usernames":
+            num_workers = args.num_workers if args.num_workers else calculate_optimal_workers()
             asyncio.run(CrawlerManager.crawl_usernames(num_workers))
-        elif command == "crawl_profiles":
-            # Nếu không có tham số num_workers, tính toán tự động
-            num_workers = int(sys.argv[2]) if len(sys.argv) > 2 else calculate_optimal_workers()
-            batch_size = int(sys.argv[3]) if len(sys.argv) > 3 else Config.CRAWLER_CONFIG["default_batch_size"]
+        elif args.command == "crawl_profiles":
+            num_workers = args.num_workers if args.num_workers else calculate_optimal_workers()
+            batch_size = args.batch_size if args.batch_size else Config.CRAWLER_CONFIG["default_batch_size"]
             asyncio.run(CrawlerManager.crawl_profiles(num_workers, batch_size))
-        elif command == "create_keywords":
+        elif args.command == "create_keywords":
             create_keywords()
-        elif command == "count_keywords":
+        elif args.command == "count_keywords":
             count_keyword_not_crawl()
-        else:
-            print("⚠️ Lệnh không hợp lệ!")
-            sys.exit(1)
     except Exception as e:
         logger.error(f"Lỗi khi thực thi lệnh: {e}")
         sys.exit(1)
