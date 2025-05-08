@@ -5,3 +5,4 @@ python-dotenv==1.0.1
 requests==2.31.0
 asyncio==3.4.3
 psutil==5.9.8 
+paramiko==3.5.0

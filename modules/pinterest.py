@@ -7,6 +7,8 @@ import os
 import json
 from typing import List, Set, Optional, Tuple
 from datetime import datetime
+import paramiko
+from io import BytesIO
 
 from database import *
 from models.username_entity import UsernameEntity
@@ -78,42 +80,102 @@ class PinterestCrawler:
 
     @staticmethod
     def _download_avatar(image_url: str, username: str) -> Optional[str]:
-        """Tải avatar về local"""
+        """Tải avatar về local hoặc remote server tùy theo môi trường"""
         try:
             # Lấy đường dẫn gốc
             base_path = Config.get_avatar_path(username)
             base_dir = os.path.dirname(base_path)
             base_filename = os.path.basename(base_path)
             
-            # Kiểm tra số lượng file trong thư mục
-            def get_next_folder():
-                folder = base_dir
-                suffix = 1
-                while True:
-                    if not os.path.exists(folder):
-                        os.makedirs(folder)
-                        return folder
+            # Kiểm tra môi trường
+            is_docker = os.path.exists('/.dockerenv')
+            
+            if is_docker:
+                # Cấu hình SFTP
+                sftp_host = "192.168.161.230"
+                sftp_username = os.environ.get('SFTP_USERNAME', 'htsc')
+                sftp_password = os.environ.get('SFTP_PASSWORD', 'Htsc@123')
+                remote_base_path = "/mnt/data/pinterest/avatars"
+                
+                # Tạo thư mục theo ngày
+                today = datetime.now().strftime("%Y-%m-%d")
+                remote_dir = f"{remote_base_path}/{today}"
+                
+                # Tạo thư mục trên remote server
+                def get_next_remote_folder():
+                    folder = remote_dir
+                    suffix = 1
+                    while True:
+                        try:
+                            with paramiko.SSHClient() as ssh:
+                                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                                ssh.connect(sftp_host, username=sftp_username, password=sftp_password)
+                                with ssh.open_sftp() as sftp:
+                                    try:
+                                        sftp.stat(folder)
+                                        # Đếm số file trong thư mục
+                                        file_count = len(sftp.listdir(folder))
+                                        if file_count < 5000:
+                                            return folder
+                                    except FileNotFoundError:
+                                        sftp.mkdir(folder)
+                                        return folder
+                                
+                                # Tạo thư mục mới với suffix
+                                suffix += 1
+                                folder = f"{remote_dir}_{suffix}"
+                        except Exception as e:
+                            logger.error(f"Lỗi khi tạo thư mục remote: {e}")
+                            return None
+                
+                # Lấy thư mục phù hợp
+                target_dir = get_next_remote_folder()
+                if not target_dir:
+                    return None
                     
-                    file_count = len([f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
-                    if file_count < 5000:
-                        return folder
-                    
-                    # Tạo thư mục mới với suffix
-                    suffix += 1
-                    folder = f"{base_dir}_{suffix}"
-            
-            # Lấy thư mục phù hợp
-            target_dir = get_next_folder()
-            filename = os.path.join(target_dir, base_filename)
-            
-            response = requests.get(image_url, timeout=Config.CRAWLER_CONFIG["timeout"])
-            
-            if response.status_code == 200:
-                with open(filename, "wb") as f:
-                    f.write(response.content)
-                logger.info(f"Ảnh avatar đã lưu: {filename}")
-                return filename
-            return None
+                remote_path = f"{target_dir}/{base_filename}"
+                
+                # Tải ảnh và upload qua SFTP
+                response = requests.get(image_url, timeout=Config.CRAWLER_CONFIG["timeout"])
+                if response.status_code == 200:
+                    with paramiko.SSHClient() as ssh:
+                        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                        ssh.connect(sftp_host, username=sftp_username, password=sftp_password)
+                        with ssh.open_sftp() as sftp:
+                            with BytesIO(response.content) as file_obj:
+                                sftp.putfo(file_obj, remote_path)
+                    logger.info(f"Ảnh avatar đã lưu remote: {remote_path}")
+                    return remote_path
+                return None
+            else:
+                # Xử lý local như cũ
+                def get_next_folder():
+                    folder = base_dir
+                    suffix = 1
+                    while True:
+                        if not os.path.exists(folder):
+                            os.makedirs(folder)
+                            return folder
+                        
+                        file_count = len([f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+                        if file_count < 5000:
+                            return folder
+                        
+                        suffix += 1
+                        folder = f"{base_dir}_{suffix}"
+                
+                target_dir = get_next_folder()
+                filename = os.path.join(target_dir, base_filename)
+                
+                response = requests.get(image_url, timeout=Config.CRAWLER_CONFIG["timeout"])
+                
+                if response.status_code == 200:
+                    with open(filename, "wb") as f:
+                        f.write(response.content)
+                    logger.info(f"Ảnh avatar đã lưu local: {filename}")
+                    return filename
+                return None
+                
         except Exception as e:
             logger.error(f"Lỗi tải avatar cho {username}: {e}")
             return None
