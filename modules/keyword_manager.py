@@ -33,39 +33,3 @@ def create_keywords():
 def count_keyword_not_crawl():
     count = keywords_collection.count_documents({"isCrawl": False})
     logger.info(f"✅ Số lượng keyword chưa crawl: {count}")
-
-import json
-
-# def test():
-#     file_path = "F:/Hieu/HieuHocCode/Data_Scraping/crawl-printerset/avatars/29-04-2025/abubblylife.jpg"
-    
-#     with open(file_path, "rb") as file:
-#         files = {
-#             "files": ("abubblylife.jpg", file, "image/jpeg")
-#         }
-
-#         raw_data = {
-#             "id_profile": "12596211366232262",
-#             "username": "abubblylife",
-#             "avatar_url": "avatars/29-04-2025/abubblylife.jpg",
-#             "bio": "DIYer, party crafter, fashion obsessed, foodie, red wine & bubbly lover, blogger at A Bubbly Life. Mom to 3 precious littles.",
-#             "full_name": "A Bubbly Life",
-#             "following": 294,
-#             "follower": 30365,
-#             "link": "https://www.pinterest.com/Abubblylife/",
-#         }
-        
-#         json_data = json.dumps(raw_data)
-
-#         url = "http://localhost:8080/api/upload/multiple"
-        
-#         try:
-#             response = requests.post(url, files=files, data={'data': json_data})
-
-#             if response.status_code == 200:
-#                 print("Dữ liệu đã được gửi thành công:", response.json())
-#             else:
-#                 print("Yêu cầu thất bại với mã lỗi:", response.status_code)
-#                 print(response.text)
-#         except requests.exceptions.RequestException as e:
-#             print("Có lỗi xảy ra trong khi gửi request:", e)
