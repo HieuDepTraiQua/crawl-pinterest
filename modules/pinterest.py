@@ -20,9 +20,10 @@ from utils.config import Config
 # Cấu hình logger
 logger = setup_logger(__name__)
 
+
 class PinterestCrawler:
     """Lớp chính để thực hiện các thao tác crawl dữ liệu từ Pinterest"""
-    
+
     def __init__(self):
         self.browser = None
         self.context = None
@@ -30,7 +31,9 @@ class PinterestCrawler:
 
     async def __aenter__(self):
         """Khởi tạo browser và context khi sử dụng with statement"""
-        self.playwright, self.browser, self.context = await self._create_browser_context()
+        self.playwright, self.browser, self.context = (
+            await self._create_browser_context()
+        )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -48,7 +51,7 @@ class PinterestCrawler:
         context = await browser.new_context(
             user_agent=Config.CRAWLER_CONFIG["user_agent"],
             viewport=Config.CRAWLER_CONFIG["viewport"],
-            locale=Config.CRAWLER_CONFIG["locale"]
+            locale=Config.CRAWLER_CONFIG["locale"],
         )
         return p, browser, context
 
@@ -58,7 +61,9 @@ class PinterestCrawler:
         if not avatar_url:
             return None
         try:
-            response = requests.get(avatar_url, timeout=Config.CRAWLER_CONFIG["timeout"])
+            response = requests.get(
+                avatar_url, timeout=Config.CRAWLER_CONFIG["timeout"]
+            )
             content_type = response.headers.get("Content-Type", "")
 
             if "svg" in content_type or "image/svg+xml" in content_type:
@@ -86,21 +91,21 @@ class PinterestCrawler:
             base_path = Config.get_avatar_path(username)
             base_dir = os.path.dirname(base_path)
             base_filename = os.path.basename(base_path)
-            
+
             # Kiểm tra môi trường
-            is_docker = os.path.exists('/.dockerenv')
-            
+            is_docker = os.path.exists("/.dockerenv")
+
             if is_docker:
                 # Cấu hình SFTP
                 sftp_host = "192.168.161.230"
-                sftp_username = os.environ.get('SFTP_USERNAME', 'htsc')
-                sftp_password = os.environ.get('SFTP_PASSWORD', 'Htsc@123')
+                sftp_username = os.environ.get("SFTP_USERNAME", "htsc")
+                sftp_password = os.environ.get("SFTP_PASSWORD", "Htsc@123")
                 remote_base_path = "/mnt/data/pinterest/avatars"
-                
+
                 # Tạo thư mục theo ngày
                 today = datetime.now().strftime("%Y-%m-%d")
                 remote_dir = f"{remote_base_path}/{today}"
-                
+
                 # Tạo thư mục trên remote server
                 def get_next_remote_folder():
                     folder = remote_dir
@@ -108,8 +113,14 @@ class PinterestCrawler:
                     while True:
                         try:
                             with paramiko.SSHClient() as ssh:
-                                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                                ssh.connect(sftp_host, username=sftp_username, password=sftp_password)
+                                ssh.set_missing_host_key_policy(
+                                    paramiko.AutoAddPolicy()
+                                )
+                                ssh.connect(
+                                    sftp_host,
+                                    username=sftp_username,
+                                    password=sftp_password,
+                                )
                                 with ssh.open_sftp() as sftp:
                                     try:
                                         sftp.stat(folder)
@@ -120,27 +131,31 @@ class PinterestCrawler:
                                     except FileNotFoundError:
                                         sftp.mkdir(folder)
                                         return folder
-                                
+
                                 # Tạo thư mục mới với suffix
                                 suffix += 1
                                 folder = f"{remote_dir}_{suffix}"
                         except Exception as e:
                             logger.error(f"Lỗi khi tạo thư mục remote: {e}")
                             return None
-                
+
                 # Lấy thư mục phù hợp
                 target_dir = get_next_remote_folder()
                 if not target_dir:
                     return None
-                    
+
                 remote_path = f"{target_dir}/{base_filename}"
-                
+
                 # Tải ảnh và upload qua SFTP
-                response = requests.get(image_url, timeout=Config.CRAWLER_CONFIG["timeout"])
+                response = requests.get(
+                    image_url, timeout=Config.CRAWLER_CONFIG["timeout"]
+                )
                 if response.status_code == 200:
                     with paramiko.SSHClient() as ssh:
                         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                        ssh.connect(sftp_host, username=sftp_username, password=sftp_password)
+                        ssh.connect(
+                            sftp_host, username=sftp_username, password=sftp_password
+                        )
                         with ssh.open_sftp() as sftp:
                             with BytesIO(response.content) as file_obj:
                                 sftp.putfo(file_obj, remote_path)
@@ -156,37 +171,48 @@ class PinterestCrawler:
                         if not os.path.exists(folder):
                             os.makedirs(folder)
                             return folder
-                        
-                        file_count = len([f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+
+                        file_count = len(
+                            [
+                                f
+                                for f in os.listdir(folder)
+                                if os.path.isfile(os.path.join(folder, f))
+                            ]
+                        )
                         if file_count < 5000:
                             return folder
-                        
+
                         suffix += 1
                         folder = f"{base_dir}_{suffix}"
-                
+
                 target_dir = get_next_folder()
                 filename = os.path.join(target_dir, base_filename)
-                
-                response = requests.get(image_url, timeout=Config.CRAWLER_CONFIG["timeout"])
-                
+
+                response = requests.get(
+                    image_url, timeout=Config.CRAWLER_CONFIG["timeout"]
+                )
+
                 if response.status_code == 200:
                     with open(filename, "wb") as f:
                         f.write(response.content)
                     logger.info(f"Ảnh avatar đã lưu local: {filename}")
                     return filename
                 return None
-                
+
         except Exception as e:
             logger.error(f"Lỗi tải avatar cho {username}: {e}")
             return None
 
-    async def _extract_profile_data(self, page, username: str) -> Optional[ProfileEntity]:
+    async def _extract_profile_data(
+        self, page, username: str
+    ) -> Optional[ProfileEntity]:
         """Trích xuất thông tin profile từ trang Pinterest"""
         try:
             await page.goto(
                 f"https://www.pinterest.com/{username}/",
                 wait_until="domcontentloaded",
-                timeout=Config.CRAWLER_CONFIG["timeout"] * 1000,  # Chuyển đổi sang milliseconds
+                timeout=Config.CRAWLER_CONFIG["timeout"]
+                * 1000,  # Chuyển đổi sang milliseconds
             )
             await page.wait_for_function(
                 'document.querySelector("script#__PWS_INITIAL_PROPS__") !== null',
@@ -238,22 +264,31 @@ class PinterestCrawler:
             for username in list_usernames:
                 page = await self.context.new_page()
                 try:
-                    profile = await self._extract_profile_data(page, username.get('username'))
+                    profile = await self._extract_profile_data(
+                        page, username.get("username")
+                    )
                     if profile:
                         list_profile.append(profile)
                         if profile.avatar_url:
-                            avatar_download_queue.append({
-                                "url": profile.avatar_url,
-                                "username": profile.username or username.get('username')
-                            })
-                        logger.info(f"Đã crawl xong profile: {username.get('username')}")
+                            avatar_download_queue.append(
+                                {
+                                    "url": profile.avatar_url,
+                                    "username": profile.username
+                                    or username.get("username"),
+                                }
+                            )
+                        logger.info(
+                            f"Đã crawl xong profile: {username.get('username')}"
+                        )
                 finally:
                     await page.close()
 
             if list_profile:
                 await self._process_profiles(list_profile, avatar_download_queue)
 
-    async def _process_profiles(self, list_profile: List[ProfileEntity], avatar_download_queue: List[dict]) -> None:
+    async def _process_profiles(
+        self, list_profile: List[ProfileEntity], avatar_download_queue: List[dict]
+    ) -> None:
         """Xử lý và lưu thông tin profile"""
         # Tải ảnh avatar
         logger.info("Bắt đầu tải ảnh avatar...")
@@ -275,10 +310,11 @@ class PinterestCrawler:
         # Cập nhật trạng thái crawl
         usernames_to_update = [profile.username for profile in list_profile]
         usernames_collection.update_many(
-            {"username": {"$in": usernames_to_update}},
-            {"$set": {"isCrawl": True}}
+            {"username": {"$in": usernames_to_update}}, {"$set": {"isCrawl": True}}
         )
-        logger.info(f"Đã cập nhật trạng thái crawl cho {len(usernames_to_update)} username")
+        logger.info(
+            f"Đã cập nhật trạng thái crawl cho {len(usernames_to_update)} username"
+        )
 
         # Xử lý và lưu keywords mới
         self._process_keywords(list_profile)
@@ -327,10 +363,16 @@ class PinterestCrawler:
                     await page.mouse.wheel(0, random.randint(800, 1200))
                     await asyncio.sleep(random.uniform(1.5, 2.5))
 
-                elements = await page.query_selector_all('[data-test-id="user-rep"] a[href]')
+                elements = await page.query_selector_all(
+                    '[data-test-id="user-rep"] a[href]'
+                )
                 for el in elements:
                     href = await el.get_attribute("href")
-                    if href and href.startswith("/") and len(href.strip("/").split("/")) == 1:
+                    if (
+                        href
+                        and href.startswith("/")
+                        and len(href.strip("/").split("/")) == 1
+                    ):
                         usernames_data.add(href.strip("/"))
 
                 self._save_usernames(usernames_data, keyword)
@@ -339,7 +381,10 @@ class PinterestCrawler:
 
     def _save_usernames(self, usernames_data: Set[str], keyword: str) -> None:
         """Lưu danh sách username vào database"""
-        existing_usernames = set(usernames_collection.distinct("username"))
+        existing_usernames_cursor = usernames_collection.find(
+            {"username": {"$in": list(usernames_data)}}, {"username": 1}
+        )
+        existing_usernames = set(user["username"] for user in existing_usernames_cursor)
         new_usernames = usernames_data - existing_usernames
 
         if new_usernames:
@@ -350,10 +395,14 @@ class PinterestCrawler:
             usernames_collection.insert_many(
                 [entity.to_dict() for entity in username_entities]
             )
-            logger.info(f"Đã lưu {len(username_entities)} username mới với keyword {keyword}")
+            logger.info(
+                f"Đã lưu {len(username_entities)} username mới với keyword {keyword}"
+            )
 
             if len(usernames_data) > len(new_usernames):
-                logger.info(f"Có {len(usernames_data) - len(new_usernames)} username đã tồn tại trong database")
+                logger.info(
+                    f"Có {len(usernames_data) - len(new_usernames)} username đã tồn tại trong database"
+                )
 
             keywords_collection.update_one(
                 {"keyword": keyword},
