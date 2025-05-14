@@ -11,6 +11,7 @@ class Config:
     # Cấu hình database
     DATABASE_NAME = os.getenv("DATABASE_NAME")
     MONGO_URL = os.getenv("MONGO_URL")
+    CRAWL_CONTROLLER_ENDPOINT = os.getenv("CRAWL_CONTROLLER_ENDPOINT")
     
     # Cấu hình crawler
     CRAWLER_CONFIG: Dict[str, Any] = {
@@ -26,6 +27,15 @@ class Config:
     # Cấu hình thư mục
     DIRECTORIES: Dict[str, str] = {
         "avatars": "avatars"
+    }
+    
+    # RabbitMQ Configuration
+    RABBITMQ_CONFIG = {
+        "host": "localhost",
+        "port": 5672,
+        "username": "guest",
+        "password": "guest",
+        "queue_name": "pinterest.crawler.queue"
     }
     
     @classmethod

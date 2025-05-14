@@ -7,5 +7,6 @@ services:
     environment:
       - MONGO_URL=mongodb://192.168.161.230:27011,192.168.161.230:27012,192.168.161.230:27013/?replicaSet=rs0
       - DATABASE_NAME=pinterest_data
+      - CRAWL_CONTROLLER_ENDPOINT=http://localhost:8080/api/upload/multiple
     command: python app.py  # Command mặc định, có thể override khi chạy 
     image: pinterest-crawler:v1.6

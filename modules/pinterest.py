@@ -9,6 +9,7 @@ from typing import List, Set, Optional, Tuple
 from datetime import datetime
 import paramiko
 from io import BytesIO
+from pathlib import Path
 
 from database import *
 from models.username_entity import UsernameEntity
@@ -286,6 +287,78 @@ class PinterestCrawler:
             if list_profile:
                 await self._process_profiles(list_profile, avatar_download_queue)
 
+    async def crawl_user_profile_by_username(self, list_usernames: List[dict]) -> None:
+        """Crawl thông tin profile từ danh sách username"""
+        async with self:
+            list_profile = []
+            avatar_download_queue = []
+            for username in list_usernames:
+                page = await self.context.new_page()
+                try:
+                    profile = await self._extract_profile_data(page, username)
+                    if profile:
+                        list_profile.append(profile)
+                        if profile.avatar_url:
+                            avatar_download = {
+                                    "url": profile.avatar_url,
+                                    "username": profile.username or username,
+                                }
+                        await self._process_single_profiles(profile, avatar_download)
+                        logger.info(f"Đã crawl xong profile: {username}")
+                finally:
+                    await page.close()
+
+    async def _process_single_profiles(
+        self, profile: ProfileEntity, avatar_download: dict
+    ) -> None:
+        """Xử lý và lưu thông tin profile"""
+        # Tải ảnh avatar
+        list_profile = []
+        logger.info("Bắt đầu tải ảnh avatar...")
+        try:
+            relative_path = self._download_avatar(avatar_download["url"], avatar_download["username"])
+            if relative_path:
+                if profile.username == avatar_download["username"]:
+                    profile.avatar_url = relative_path
+        except Exception as e:
+            logger.error(f"Lỗi khi tải ảnh cho {avatar_download['username']}: {e}")
+
+
+        await self._send_result_to_crawl_controller(profile)
+        
+        # Xử lý và lưu keywords mới
+        list_profile.append(profile)
+        self._process_keywords(list_profile)
+
+
+    async def _send_result_to_crawl_controller (self, profile: ProfileEntity) -> None: 
+        url = Config.CRAWL_CONTROLLER_ENDPOINT
+        
+        json_path = Path("data.json")
+        with open("data.json", "w", encoding="utf-8") as f:
+            json.dump(profile.model_dump(), f, ensure_ascii=False, indent=4)
+        
+        avatar_path = Path(profile.avatar_url)
+        avatar_filename = avatar_path.name
+        with open(profile.avatar_url, 'rb') as avatar_file, open("data.json", 'rb') as json_file:
+            files = [
+                ('files', (avatar_filename, avatar_file, 'image/jpeg')),
+                ('files', ('data.json', json_file, 'application/json'))
+            ]
+            data = {"data": "PINTEREST_DATA"}
+            response = requests.post(url, data=data, files=files)
+            print(response.status_code)
+            print(response.text)
+        if response.status_code == 200:
+            try:
+                avatar_path.unlink(missing_ok=True)
+                json_path.unlink(missing_ok=True)
+                print("Đã xóa file thành công.")
+            except Exception as e:
+                print(f"Lỗi khi xóa file: {e}")
+
+        
+    
     async def _process_profiles(
         self, list_profile: List[ProfileEntity], avatar_download_queue: List[dict]
     ) -> None:
@@ -318,6 +391,10 @@ class PinterestCrawler:
 
         # Xử lý và lưu keywords mới
         self._process_keywords(list_profile)
+    
+    def is_standard_alpha(word: str) -> bool:
+        """Chỉ cho phép ký tự chữ và số trong bảng mã Latin cơ bản"""
+        return all(c.isalnum() and c.isascii() for c in word)
 
     def _process_keywords(self, list_profile: List[ProfileEntity]) -> None:
         """Xử lý và lưu keywords từ fullname"""
@@ -326,11 +403,12 @@ class PinterestCrawler:
             if profile.full_name:
                 name_parts = profile.full_name.split()
                 for name_part in name_parts:
-                    existing_keyword = keywords_collection.find_one(
-                        {"keyword": name_part.lower()}
-                    )
+                    keyword = name_part.lower()
+                    if not self.is_standard_alpha(keyword):
+                        continue  # Bỏ qua từ chứa ký tự đặc biệt hoặc non-standard
+                    existing_keyword = keywords_collection.find_one({"keyword": keyword})
                     if not existing_keyword:
-                        new_keywords.add(name_part.lower())
+                        new_keywords.add(keyword)
 
         if new_keywords:
             keyword_entities = [
