@@ -61,13 +61,14 @@ class PinterestCrawler:
         if not avatar_url:
             return None
         try:
-            response = requests.get(
-                avatar_url, timeout=Config.CRAWLER_CONFIG["timeout"]
-            )
-            content_type = response.headers.get("Content-Type", "")
+            # Bỏ default avatar
+            # response = requests.get(
+            #     avatar_url, timeout=Config.CRAWLER_CONFIG["timeout"]
+            # )
+            # content_type = response.headers.get("Content-Type", "")
 
-            if "svg" in content_type or "image/svg+xml" in content_type:
-                return None
+            # if "svg" in content_type or "image/svg+xml" in content_type:
+            #     return None
 
             parsed = urlparse(avatar_url)
             path_parts = parsed.path.split("/")
@@ -319,6 +320,10 @@ class PinterestCrawler:
         # Xử lý và lưu keywords mới
         self._process_keywords(list_profile)
 
+    def is_standard_alpha(self, word: str) -> bool:
+        """Chỉ cho phép ký tự chữ và số trong bảng mã Latin cơ bản"""
+        return all(c.isalnum() and c.isascii() for c in word)
+
     def _process_keywords(self, list_profile: List[ProfileEntity]) -> None:
         """Xử lý và lưu keywords từ fullname"""
         new_keywords = set()
@@ -326,11 +331,12 @@ class PinterestCrawler:
             if profile.full_name:
                 name_parts = profile.full_name.split()
                 for name_part in name_parts:
-                    existing_keyword = keywords_collection.find_one(
-                        {"keyword": name_part.lower()}
-                    )
+                    keyword = name_part.lower()
+                    if not self.is_standard_alpha(keyword):
+                        continue  # Bỏ qua từ chứa ký tự đặc biệt hoặc non-standard
+                    existing_keyword = keywords_collection.find_one({"keyword": keyword})
                     if not existing_keyword:
-                        new_keywords.add(name_part.lower())
+                        new_keywords.add(keyword)
 
         if new_keywords:
             keyword_entities = [
